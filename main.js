@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
-const { app, BrowserWindow, globalShortcut, session, ipcMain } = require("electron");
+const { app, BrowserWindow, globalShortcut, session, ipcMain, Menu } = require("electron");
 
 // ── Resolve a stable .env location ──
 // In packaged builds process.cwd() is unstable and frequently read-only
@@ -103,6 +103,9 @@ process.on("unhandledRejection", (reason) => {
 const captureService = require("./src/services/capture.service");
 const speechService = require("./src/services/speech.service");
 const llmService = require("./src/services/llm.service");
+const authService = require("./src/services/auth.service");
+const permissionsService = require("./src/services/permissions.service");
+const { checkForUpdates } = require("./src/core/updater");
 
 // Managers
 const windowManager = require("./src/managers/window.manager");
@@ -116,6 +119,12 @@ class ApplicationController {
   // Default to C++ so language is enforced from first run
   this.codingLanguage = "cpp";
     this.speechAvailable = false;
+
+    // Stealth (process/dock disguise) is OFF by default so the app behaves
+    // like a normal Mac app out of the box (About HireSky, real Dock icon,
+    // Launchpad/Finder branding) — it's an explicit opt-in the user turns on
+    // right before a call, not the always-on default it used to be.
+    this.stealthEnabled = process.env.STEALTH_MODE === "true";
 
     // Utterance coalescing: VAD emits a transcript per natural pause, but a
     // single spoken question can still arrive as a few fragments (mid-thought
@@ -137,6 +146,7 @@ class ApplicationController {
       // and that persistEnvUpdates() writes to.
       envPath: ENV_PATH,
       sentinelPath: path.join(app.getPath("userData"), ".hiresky-firstrun-completed"),
+      resourcesPath: app.isPackaged ? process.resourcesPath : null,
     });
     // Lazily-initialised in getWhisperInstaller() so tests can mock
     // the constructor without polluting main-process startup.
@@ -156,15 +166,17 @@ class ApplicationController {
   }
 
   setupStealth() {
-    if (config.get("stealth.disguiseProcess")) {
-      process.title = config.get("app.processTitle");
+    // Only disguise the process/name this early if the user already had
+    // stealth mode on from a previous session (persisted via STEALTH_MODE).
+    // Default (stealthEnabled === false): leave the real "HireSky" identity
+    // in place, applied explicitly in onAppReady() once app.setName() is
+    // safe to call and windows exist.
+    if (this.stealthEnabled) {
+      process.title = "Terminal ";
+      if (app && typeof app.setName === "function") {
+        app.setName("Terminal ");
+      }
     }
-
-    // Set default stealth app name early
-    if (app && typeof app.setName === 'function') {
-      app.setName("Terminal ");
-    }
-    process.title = "Terminal ";
 
     if (
       process.platform === "darwin" &&
@@ -225,9 +237,17 @@ class ApplicationController {
     }
     this.starting = true;
 
-    // Force stealth mode IMMEDIATELY when app is ready
-    app.setName("Terminal ");
-    process.title = "Terminal ";
+    // Apply real "HireSky" identity by default, or re-force the disguise if
+    // the user had stealth mode on from a previous session.
+    if (this.stealthEnabled) {
+      app.setName("Terminal ");
+      process.title = "Terminal ";
+    } else {
+      app.setName("HireSky");
+      process.title = "HireSky";
+    }
+
+    this.setupApplicationMenu();
 
     logger.info("Application starting", {
       version: config.get("app.version"),
@@ -250,20 +270,50 @@ class ApplicationController {
       try {
         this.firstRunManager.ensureEnv();
         status = this.firstRunManager.getStatus();
+
+        // A packaged build with a bundled Whisper runtime and a working
+        // Gemini key (see build/default.env, scripts/build-whisper-runtime.sh)
+        // needs zero configuration — skip the setup wizard entirely and go
+        // straight to permissions + login, even on a brand-new install
+        // where the "first run completed" sentinel doesn't exist yet.
+        const isZeroConfigBuild = app.isPackaged &&
+          speechService.hasBundledWhisperRuntime() &&
+          status.geminiConfigured;
+        if (isZeroConfigBuild && status.needsOnboarding) {
+          this.firstRunManager.markCompleted();
+          status.needsOnboarding = false;
+        }
+
         this.isFirstRun = status.needsOnboarding;
-        logger.info("First-run status", status);
+        logger.info("First-run status", { ...status, isZeroConfigBuild });
       } catch (e) {
         logger.warn("First-run check failed", { error: e.message });
         status = { needsOnboarding: false };
         this.isFirstRun = false;
       }
       const isFirstRun = status.needsOnboarding;
+      // Returning users still need to pass the login gate before the main
+      // overlay is shown — "remember login" means skipping this, not
+      // skipping it unconditionally.
+      const needsLogin = !isFirstRun && !authService.isAuthenticated();
 
-      await windowManager.initializeWindows({ showMainWindow: !isFirstRun });
+      await windowManager.initializeWindows({ showMainWindow: !isFirstRun && !needsLogin });
       this.setupGlobalShortcuts();
 
-      // Initialize default stealth mode with terminal icon
-      this.updateAppIcon("terminal");
+      // Screen-recording permission has no native "granted" callback on
+      // macOS — poll it so the UI can auto-continue the moment the user
+      // flips it on in System Settings, without a manual restart/re-check.
+      permissionsService.startWatching((status) => {
+        windowManager.broadcastToAllWindows("permission-status-changed", status);
+      });
+
+      // Apply the persisted identity: real HireSky branding by default, or
+      // the disguise icon/name if stealth mode was left on from last time.
+      if (this.stealthEnabled) {
+        this.updateAppIcon(this.appIcon || "terminal");
+      } else {
+        this.applyRealIdentity();
+      }
 
       this.starting = false;
       this.isReady = true;
@@ -285,6 +335,15 @@ class ApplicationController {
             try { this.showSettings(); } catch (_) { /* ignore */ }
           }
         }, 800);
+      } else if (needsLogin) {
+        setTimeout(() => {
+          try {
+            windowManager.showLogin();
+            logger.info("Login gate shown (not authenticated)");
+          } catch (e) {
+            logger.warn("Could not open login window", { error: e.message });
+          }
+        }, 300);
       } else {
         // Already configured — mark completed so we never nag again.
         this.firstRunManager.markCompleted();
@@ -296,6 +355,7 @@ class ApplicationController {
       });
 
       sessionManager.addEvent("Application started");
+      checkForUpdates();
     } catch (error) {
       this.starting = false;
       logger.error("Application initialization failed", {
@@ -752,9 +812,14 @@ class ApplicationController {
         this.speechAvailable = speechService.isAvailable
           ? speechService.isAvailable()
           : false;
-        // Show the main overlay window now that onboarding is done
-        // and API keys are configured.
-        await windowManager.showMainWindow();
+        // Onboarding is done and API keys are configured — now the login
+        // gate, then the main overlay. First-time setup always requires a
+        // fresh login (there's nothing to "remember" yet).
+        if (authService.isAuthenticated()) {
+          await windowManager.showMainWindow();
+        } else {
+          await windowManager.showLogin();
+        }
         // Broadcast speech availability so the mic button appears
         const { BrowserWindow } = require("electron");
         BrowserWindow.getAllWindows().forEach((win) => {
@@ -797,6 +862,9 @@ class ApplicationController {
     // Detect an installed Whisper CLI across common locations.
     ipcMain.handle("detect-whisper", async () => {
       try {
+        if (speechService.hasBundledWhisperRuntime()) {
+          return { found: true, command: "bundled", version: "bundled", source: "bundled-runtime" };
+        }
         const installer = this.getWhisperInstaller();
         return await installer.detect();
       } catch (e) {
@@ -846,6 +914,50 @@ class ApplicationController {
 
     ipcMain.handle("update-app-icon", (event, iconKey) => {
       return this.updateAppIcon(iconKey);
+    });
+
+    ipcMain.handle("set-stealth-mode", (event, enabled) => {
+      const result = this.setStealthMode(enabled);
+      this.persistEnvUpdates({ STEALTH_MODE: this.stealthEnabled ? "true" : "false" });
+      return result;
+    });
+
+    ipcMain.handle("auth-login", async (event, email, password) => {
+      const result = authService.login(email, password);
+      if (result.success) {
+        try { this.firstRunManager.markCompleted(); } catch (_) { /* already completed */ }
+        windowManager.closeLogin();
+        await windowManager.showMainWindow();
+      }
+      return result;
+    });
+
+    ipcMain.handle("auth-logout", async () => {
+      const result = authService.logout();
+      windowManager.hideAllWindows();
+      await windowManager.showLogin();
+      return result;
+    });
+
+    ipcMain.handle("auth-get-status", () => {
+      return { authenticated: authService.isAuthenticated() };
+    });
+
+    ipcMain.handle("get-permission-status", () => {
+      return permissionsService.getStatus();
+    });
+
+    ipcMain.handle("request-microphone-permission", async () => {
+      const granted = await permissionsService.requestMicrophone();
+      return { granted, status: permissionsService.getStatus() };
+    });
+
+    ipcMain.handle("open-microphone-settings", () => {
+      permissionsService.openMicrophoneSettings();
+    });
+
+    ipcMain.handle("open-screen-recording-settings", () => {
+      permissionsService.openScreenRecordingSettings();
     });
 
     ipcMain.handle("update-active-skill", (event, skill) => {
@@ -1560,6 +1672,7 @@ class ApplicationController {
 
   onWillQuit() {
     globalShortcut.unregisterAll();
+    permissionsService.stopWatching();
     speechService.shutdown();
     windowManager.destroyAllWindows();
 
@@ -1593,6 +1706,7 @@ class ApplicationController {
       activeSkill: this.activeSkill || "dsa",
       appIcon: this.appIcon || "terminal",
       selectedIcon: this.appIcon || "terminal",
+      stealthEnabled: this.stealthEnabled,
       windowGap: windowManager.windowGap,
 
       speechProvider: speechService.provider || "whisper",
@@ -1609,7 +1723,13 @@ class ApplicationController {
       geminiKey: process.env.GEMINI_API_KEY || "",
 
       azureConfigured: !!process.env.AZURE_SPEECH_KEY && !!process.env.AZURE_SPEECH_REGION,
-      speechAvailable: this.speechAvailable
+      speechAvailable: this.speechAvailable,
+      // Packaged builds ship with Whisper and a Gemini key already bundled
+      // (see build/default.env, scripts/build-whisper-runtime.sh) — the UI
+      // hides the technical/key fields a normal end user never needs to
+      // see or edit. Dev builds (npm run dev) keep them visible.
+      isPackaged: app.isPackaged,
+      whisperBundled: speechService.hasBundledWhisperRuntime()
     };
   }
 
@@ -1633,7 +1753,10 @@ class ApplicationController {
       }
       if (settings.selectedIcon) {
         this.appIcon = settings.selectedIcon;
-        this.updateAppIcon(settings.selectedIcon);
+        if (this.stealthEnabled) this.updateAppIcon(settings.selectedIcon);
+      }
+      if (settings.stealthEnabled !== undefined) {
+        this.setStealthMode(!!settings.stealthEnabled);
       }
       if (settings.windowGap !== undefined) {
         const gap = Number(settings.windowGap);
@@ -1677,6 +1800,9 @@ class ApplicationController {
       }
       if (settings.geminiKey !== undefined) {
         envUpdates.GEMINI_API_KEY = settings.geminiKey;
+      }
+      if (settings.stealthEnabled !== undefined) {
+        envUpdates.STEALTH_MODE = settings.stealthEnabled ? "true" : "false";
       }
 
       // Capture the previous whisper command BEFORE persisting — persistEnvUpdates
@@ -1829,6 +1955,92 @@ class ApplicationController {
 
     logger.info("Persisted .env updates", { keys: Array.from(updated) });
     return Array.from(updated);
+  }
+
+  setStealthMode(enabled) {
+    this.stealthEnabled = !!enabled;
+    if (this.stealthEnabled) {
+      this.updateAppIcon(this.appIcon || "terminal");
+    } else {
+      this.applyRealIdentity();
+    }
+    logger.info("Stealth mode toggled", { enabled: this.stealthEnabled });
+    return { success: true, stealthEnabled: this.stealthEnabled };
+  }
+
+  applyRealIdentity() {
+    try {
+      const { app } = require("electron");
+      const path = require("path");
+      const fs = require("fs");
+
+      if (process.platform === "darwin") {
+        app.setName("HireSky");
+        if (app.dock) {
+          const realIconPath = path.resolve(__dirname, "assests/icons/hiresky.png");
+          if (fs.existsSync(realIconPath)) {
+            app.dock.setIcon(realIconPath);
+          }
+          app.dock.setBadge("");
+        }
+      } else if (process.platform === "win32") {
+        app.setAppUserModelId("HireSky");
+      }
+      process.title = "HireSky";
+
+      // Restore each window's own real title instead of the shared
+      // stealth title every window gets forced to.
+      windowManager.windows.forEach((window, type) => {
+        if (window && !window.isDestroyed()) {
+          const title = (this.windowConfigs[type] && this.windowConfigs[type].title) || "HireSky";
+          window.setTitle(title);
+          if (process.platform !== "darwin") {
+            const realIconPath = path.resolve(__dirname, "assests/icons/hiresky.png");
+            if (fs.existsSync(realIconPath)) window.setIcon(realIconPath);
+          }
+        }
+      });
+
+      this.appIcon = null;
+      logger.info("Applied real HireSky identity (stealth off)");
+    } catch (error) {
+      logger.error("Failed to apply real identity", { error: error.message });
+    }
+  }
+
+  setupApplicationMenu() {
+    try {
+      const isMac = process.platform === "darwin";
+      const template = [
+        ...(isMac
+          ? [
+              {
+                label: "HireSky",
+                submenu: [
+                  { role: "about", label: "About HireSky" },
+                  { type: "separator" },
+                  {
+                    label: "Settings…",
+                    accelerator: "Cmd+,",
+                    click: () => this.showSettings(),
+                  },
+                  { type: "separator" },
+                  { role: "hide", label: "Hide HireSky" },
+                  { role: "hideOthers" },
+                  { role: "unhide" },
+                  { type: "separator" },
+                  { role: "quit", label: "Quit HireSky" },
+                ],
+              },
+            ]
+          : []),
+        { role: "editMenu" },
+        { role: "windowMenu" },
+      ];
+      Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+    } catch (error) {
+      logger.error("Failed to set application menu", { error: error.message });
+    }
   }
 
   updateAppIcon(iconKey) {

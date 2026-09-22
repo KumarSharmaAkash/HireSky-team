@@ -8,7 +8,7 @@
     "dev": "env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox --disable-gpu",
     "test-speech": "node scripts/test-speech.js",
     "build": "electron-builder",
-    "build:mac": "electron-builder --mac",
+    "build:mac": "node scripts/mac/preflight.js && electron-builder --mac",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --mac --win --linux",
@@ -33,6 +33,7 @@
     "@fortawesome/fontawesome-free": "^7.2.0",
     "@google/genai": "^2.9.0",
     "dotenv": "^16.3.1",
+    "electron-updater": "^6.1.7",
     "markdown": "^0.5.0",
     "marked": "^15.0.12",
     "microsoft-cognitiveservices-speech-sdk": "^1.40.0",
@@ -42,6 +43,7 @@
     "winston-daily-rotate-file": "^4.7.1"
   },
   "devDependencies": {
+    "@electron/notarize": "^2.2.1",
     "electron": "^29.1.0",
     "electron-builder": "^24.13.3"
   },
@@ -59,6 +61,7 @@
       "!.env*",
       "!.venv-whisper/**/*",
       "!.whisper-models/**/*",
+      "!vendor/whisper-runtime/**/*",
       "!bin/**/*",
       "!scripts/__pycache__/**/*",
       "!**/*.pyc",
@@ -69,27 +72,50 @@
       "prompts/**/*",
       "scripts/whisper_worker.py"
     ],
+    "extraResources": [
+      {
+        "from": "vendor/whisper-runtime/darwin-arm64",
+        "to": "whisper-runtime",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "vendor/whisper-runtime/models",
+        "to": "whisper-models",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "build/default.env",
+        "to": "default.env"
+      }
+    ],
+    "afterPack": "scripts/mac/after-pack.js",
+    "afterSign": "scripts/mac/after-sign.js",
+    "afterAllArtifactBuild": "scripts/mac/after-all-artifacts.js",
     "mac": {
       "category": "public.app-category.utilities",
+      "icon": "build/icon.icns",
       "target": [
         {
           "target": "dmg",
           "arch": [
-            "x64",
             "arm64"
           ]
         },
         {
           "target": "zip",
           "arch": [
-            "x64",
             "arm64"
           ]
         }
       ],
       "darkModeSupport": true,
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "notarize": {
+        "teamId": "REPLACE_WITH_APPLE_TEAM_ID"
+      },
       "extendInfo": {
         "NSMicrophoneUsageDescription": "HireSky uses the microphone to transcribe your speech locally with Whisper.",
         "NSCameraUsageDescription": "HireSky does not record video; this entitlement is only present for media-capture compatibility.",

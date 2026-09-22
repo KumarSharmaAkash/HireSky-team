@@ -100,7 +100,10 @@ class ConfigManager {
       stealth: {
         hideFromDock: true,
         noAttachConsole: true,
-        disguiseProcess: true
+        // Actual on/off control lives in the STEALTH_MODE env var
+        // (ApplicationController.stealthEnabled) so it's user-toggleable
+        // and persists via .env — this default is informational only.
+        disguiseProcess: false
       }
     };
   }

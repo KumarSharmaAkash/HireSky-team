@@ -1,7 +1,5 @@
 # HireSky — Setup Guide (Windows + Mac)
 
-Repo already download ho chuka hai: [/Users/akash/Broski/HireSky](/Users/akash/Broski/HireSky)
-
 HireSky ek Electron-based desktop app hai (AI interview copilot). Isko run karne ke liye Node.js chahiye aur kam se kam ek **Gemini API key**.
 
 ---

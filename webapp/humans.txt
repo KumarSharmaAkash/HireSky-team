@@ -8,7 +8,6 @@
 
   Developer & maintainer: Akash
   Site: https://akash.dev
-  GitHub: https://github.com/Akash
 
 # SITE
 

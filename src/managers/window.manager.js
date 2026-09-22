@@ -90,6 +90,25 @@ class WindowManager {
         alwaysOnTop: true,
         visibleOnAllWorkspaces: true,
         fullscreenable: false
+      },
+      login: {
+        width: 420,
+        height: 480,
+        file: 'login.html',
+        title: 'Sign in to HireSky',
+        frame: false,
+        titleBarStyle: 'hidden',
+        transparent: true,
+        skipTaskbar: true,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        // Not closable — logging in (or quitting the app) are the only
+        // ways out, so the app never ends up in a half-authenticated state.
+        closable: false,
+        alwaysOnTop: true,
+        visibleOnAllWorkspaces: true,
+        fullscreenable: false
       }
     };
 
@@ -329,6 +348,27 @@ class WindowManager {
         minimizable: false,
         maximizable: false,
         closable: true,
+        hasShadow: true,
+        backgroundColor: '#00000000',
+        level: process.platform === 'darwin' ? 'floating' : undefined,
+        ...(process.platform === 'darwin' && {
+          type: 'panel',
+          acceptFirstMouse: true,
+          disableAutoHideCursor: true
+        })
+      };
+  } else if (type === 'login') {
+      // Login gate — same frameless/panel style as onboarding, but not
+      // user-closable (see windowConfigs.login comment).
+      browserWindowOptions = {
+        ...baseOptions,
+        frame: false,
+        titleBarStyle: 'hidden',
+        transparent: true,
+        resizable: false,
+        minimizable: false,
+        maximizable: false,
+        closable: false,
         hasShadow: true,
         backgroundColor: '#00000000',
         level: process.platform === 'darwin' ? 'floating' : undefined,
@@ -1392,6 +1432,37 @@ class WindowManager {
       onboardingWindow.close();
     }
     this.windows.delete('onboarding');
+  }
+
+  async showLogin() {
+    if (this.isScreenBeingShared) return null;
+
+    let loginWindow = this.windows.get('login');
+    if (!loginWindow) {
+      loginWindow = await this.createWindow('login');
+      this.windows.set('login', loginWindow);
+    }
+
+    this.showOnCurrentDesktop(loginWindow);
+    this.centerWindow(loginWindow);
+    loginWindow.focus();
+    logger.info('Login window displayed');
+    return loginWindow;
+  }
+
+  hideLogin() {
+    const loginWindow = this.windows.get('login');
+    if (loginWindow && !loginWindow.isDestroyed()) {
+      loginWindow.hide();
+    }
+  }
+
+  closeLogin() {
+    const loginWindow = this.windows.get('login');
+    if (loginWindow && !loginWindow.isDestroyed()) {
+      loginWindow.destroy();
+    }
+    this.windows.delete('login');
   }
 
   expandLLMWindow(contentMetrics = null) {

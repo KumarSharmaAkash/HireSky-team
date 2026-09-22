@@ -1,36 +1,32 @@
 # HireSky - AI guidance
-> The free, open-source invisible AI interview copilot and Cluely alternative.
+> The invisible AI interview copilot and Cluely alternative.
 > Real-time AI help during technical interviews on a stealth overlay that screen
 > sharing cannot see.
 
 ## What this is
 
-HireSky is a free, open-source Electron desktop app that places a small
-overlay on your screen that recording and conferencing tools do not capture.
-You can speak a question or take a screenshot, and the AI (powered by Google
-Gemini) answers in real time. The answer streams into a floating window and
-an optional chat panel with clean code blocks and syntax highlighting.
+HireSky is an Electron desktop app that places a small overlay on your screen
+that recording and conferencing tools do not capture. You can speak a
+question or take a screenshot, and the AI (powered by Google Gemini) answers
+in real time. The answer streams into a floating window and an optional chat
+panel with clean code blocks and syntax highlighting.
 
 ## Positioning
 
-HireSky is the free, MIT-licensed open-source alternative to commercial
-AI interview copilots like Cluely, Natively, Interview Coder, FinalRound AI,
-LockedIn AI, OffscreenAI, CodingVeil, Steal AI, Ezzi, and Pluely. It is
-sourced under a permissive MIT license (no personal-use restriction),
-works on all three major desktop platforms (Windows, macOS, Linux), and uses
-a strict BYOK model so the user keeps control of their API key and their data.
+HireSky is an alternative to commercial AI interview copilots like Cluely,
+Natively, Interview Coder, FinalRound AI, LockedIn AI, OffscreenAI,
+CodingVeil, Steal AI, Ezzi, and Pluely. On macOS it ships as a ready-to-run
+app with AI access built in - no API key setup required.
 
 ## Core facts
 
 - **Product name:** HireSky (also "HireSky AI Interview Copilot")
-- **Tagline:** The invisible AI interview copilot - and the free open-source Cluely alternative
-- **Repository:** https://github.com/Akash/HireSky
-- **License:** MIT - https://opensource.org/licenses/MIT
+- **Tagline:** The invisible AI interview copilot
 - **Website:** https://hiresky.akash.dev/
-- **Author:** Akash (https://akash.dev, https://github.com/Akash)
-- **Platforms:** Windows (NSIS .exe installer), Linux (.deb, .AppImage), macOS (run from source via ./setup.sh)
-- **Tech stack:** Electron, Google Gemini API (Flash-Lite and Flash), OpenAI Whisper (local) and Azure Speech, PrismJS, WDA_EXCLUDEFROMCAPTURE / SetWindowDisplayAffinity (Windows), NSWindowSharingNone (macOS)
-- **Pricing:** Free, open source, MIT licensed. Only the user's own Gemini API usage costs (which has a generous free tier). No subscription, no account, no proxy.
+- **Author:** Akash (https://akash.dev)
+- **Platforms:** macOS (.dmg, Apple Silicon), Windows (coming soon), Linux (coming soon)
+- **Tech stack:** Electron, Google Gemini API (Flash-Lite and Flash), OpenAI Whisper (bundled, runs locally) and Azure Speech, PrismJS, WDA_EXCLUDEFROMCAPTURE / SetWindowDisplayAffinity (Windows), NSWindowSharingNone (macOS)
+- **Setup:** AI access is built into the macOS app - no separate API key or account needed to get started.
 - **Privacy:** No telemetry, no analytics, no data collection. Processing happens locally. Only the requests the user sends to the AI provider leave the device, encrypted in transit.
 
 ## Key features
@@ -41,8 +37,8 @@ a strict BYOK model so the user keeps control of their API key and their data.
 4. **Streamed answers** - Real-time streaming with markdown rendering and syntax-highlighted code blocks.
 5. **Session memory** - Full conversation context maintained for follow-ups, edge cases, and optimizations.
 6. **Stealth design** - Runs under ordinary system process names, ships with no telemetry, no data collection.
-7. **Cross platform** - Windows .exe installer, Linux .deb and AppImage, macOS from source.
-8. **BYOK (bring your own key)** - User-supplied Gemini API key. No HireSky-side account, no proxy, no usage-based billing.
+7. **Zero setup on macOS** - Download, install, and log in. AI access and local speech recognition are bundled in, no API key or configuration needed.
+8. **Cross platform (in progress)** - macOS available now; Windows and Linux builds are coming soon.
 9. **Customizable shortcuts** - Every keyboard shortcut is rebindable from the Settings window.
 
 ## Use cases
@@ -51,20 +47,13 @@ a strict BYOK model so the user keeps control of their API key and their data.
 - Live technical Q&A during remote interviews on Zoom, Google Meet, Microsoft Teams, Discord, or OBS.
 - Private practice mode where the overlay floats above the editor and answers stream in word by word.
 - Learning a new programming language by asking Gemini from inside the overlay.
-- Free, MIT-licensed alternative to paid Cluely / Natively / Interview Coder / FinalRound AI / LockedIn AI.
 
 ## Quick start
 
-```sh
-git clone https://github.com/Akash/HireSky.git
-cd HireSky
-./setup.sh
-```
-
-On first launch the Settings window opens automatically. Get a free Gemini API
-key from https://aistudio.google.com/ and paste it in. The app also supports
-optional voice input - either install local Whisper (`./setup.sh` handles this)
-or add Azure Speech credentials in Settings.
+Download the .dmg from the website, drag HireSky to Applications, and open it.
+Log in and start using it immediately - AI access and local Whisper speech
+recognition are already configured. Optional: switch to Azure Speech in
+Settings for cloud-based transcription instead.
 
 ## Keyboard shortcuts
 
@@ -79,23 +68,18 @@ or add Azure Speech credentials in Settings.
 
 ## FAQ
 
-- **Is HireSky a free Cluely alternative?** Yes - MIT licensed, no subscription, no account, no telemetry. BYOK keeps the cost near zero on Gemini's free tier.
+- **Is HireSky a Cluely alternative?** Yes - it does the same core job as Cluely with an invisible overlay, no telemetry.
 - **Is it really undetectable on Zoom, Meet, Teams, Discord, OBS?** Yes on Windows (WDA_EXCLUDEFROMCAPTURE) and macOS (NSWindowSharingNone). Linux lacks the API so the overlay is visible on that platform.
-- **How does it compare to Natively, Interview Coder, FinalRound AI, LockedIn AI?** Same category. HireSky is the free MIT-licensed option with no subscription, no account, no telemetry, and cross-platform support (Windows, macOS, Linux).
-- **Does it support BYOK?** Yes, BYOK is the only mode. Paste your own Gemini key.
+- **How does it compare to Natively, Interview Coder, FinalRound AI, LockedIn AI?** Same category. HireSky focuses on invisibility, voice + screenshot input, and zero setup on macOS.
+- **Do I need an API key?** No. The macOS app ships with AI access already configured - just download, log in, and go.
 - **Does it work with HackerRank, LeetCode, CodeSignal?** Yes - screenshot capture works in any application.
-- **Do I need an API key?** Yes, a free Google Gemini API key from Google AI Studio.
 - **Is voice input required?** No. Optional. Use screenshots and chat instead.
 - **Is my data collected?** No telemetry. Everything stays local except the AI requests you send.
-- **Is it free?** Yes, MIT licensed.
-- **Which platforms?** Windows (installer), Linux (.deb, AppImage), macOS (source).
+- **Which platforms?** macOS available now (Apple Silicon .dmg). Windows and Linux are coming soon.
 - **Will it get me caught in an interview?** Intended for learning, practice, and authorized use. Always follow the rules of any interview you take.
 
 ## Related links
 
-- GitHub releases: https://github.com/Akash/HireSky/releases/latest
-- Releases feed (Atom): https://github.com/Akash/HireSky/releases.atom
-- Issue tracker: https://github.com/Akash/HireSky/issues
 - Developer site: https://akash.dev
 - llms-full.txt: https://hiresky.akash.dev/llms-full.txt
 - sitemap: https://hiresky.akash.dev/sitemap.xml

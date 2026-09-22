@@ -592,7 +592,16 @@ class SpeechService extends EventEmitter {
     try {
       this.pushStream = sdk.AudioInputStream.createPushStream();
       this.audioConfig = sdk.AudioConfig.fromStreamInput(this.pushStream);
-      this._startMicrophoneCapture();
+
+      // Same reasoning as _startWhisperRecording(): node-record-lpcm16 shells
+      // out to sox/arecord, which isn't bundled and isn't on a normal user's
+      // Mac or Windows PC. Route renderer-captured getUserMedia audio into
+      // the Azure push stream instead on those platforms; Linux keeps the
+      // native recorder (system sox/arecord, already a documented .deb dep).
+      this.useRendererCapture = process.platform === 'win32' || process.platform === 'darwin';
+      if (!this.useRendererCapture) {
+        this._startMicrophoneCapture();
+      }
       this.recognizer = new sdk.SpeechRecognizer(this.speechConfig, this.audioConfig);
     } catch (error) {
       logger.error('Failed to start Azure recording session', { error: error.message });
@@ -784,18 +793,23 @@ class SpeechService extends EventEmitter {
   }
 
   /**
-   * Receive raw 16kHz mono 16-bit PCM audio from the renderer and add it to
-   * the current Whisper segment buffer.
+   * Receive raw 16kHz mono 16-bit PCM audio from the renderer (used on
+   * Windows/macOS for both providers, since neither ships a native mic
+   * recorder binary there) and route it to whichever provider is active.
    */
   handleAudioChunkFromRenderer(chunk) {
-    if (!this.isRecording || this.provider !== 'whisper' || !this.useRendererCapture) {
+    if (!this.isRecording || !this.useRendererCapture) {
       return;
     }
     if (!chunk || !chunk.length) {
       return;
     }
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    this._ingestWhisperAudio(buffer);
+    if (this.provider === 'whisper') {
+      this._ingestWhisperAudio(buffer);
+    } else if (this.provider === 'azure' && this.pushStream) {
+      this.pushStream.write(buffer);
+    }
   }
 
   /**
@@ -1197,6 +1211,16 @@ class SpeechService extends EventEmitter {
     return false;
   }
 
+  /**
+   * True when a self-contained Whisper runtime is bundled into this
+   * packaged build (see scripts/build-whisper-runtime.sh) — lets the
+   * onboarding UI skip the "install Whisper" step entirely, since there's
+   * nothing left for the user to install.
+   */
+  hasBundledWhisperRuntime() {
+    return !!this._getBundledWhisperCandidate();
+  }
+
   isManualCaptureMode() {
     return this.provider === 'whisper' && this._getWhisperCaptureMode() === 'manual';
   }
@@ -1256,7 +1280,7 @@ class SpeechService extends EventEmitter {
     if (configured && path.isAbsolute(configured)) {
       return configured;
     }
-    return this._getUserDataModelDir() || configured;
+    return this._getBundledModelDir() || this._getUserDataModelDir() || configured;
   }
 
   /**
@@ -1267,6 +1291,22 @@ class SpeechService extends EventEmitter {
     try {
       const { app } = require('electron');
       return path.join(app.getPath('userData'), '.whisper-models');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /**
+   * Read-only model weights bundled directly into the packaged app via
+   * electron-builder's `extraResources` (see scripts/build-whisper-runtime.sh)
+   * — only exists in a packaged build, never in dev.
+   */
+  _getBundledModelDir() {
+    try {
+      const { app } = require('electron');
+      if (!app.isPackaged) return '';
+      const dir = path.join(process.resourcesPath, 'whisper-models');
+      return fs.existsSync(dir) ? dir : '';
     } catch (_) {
       return '';
     }
@@ -1362,6 +1402,11 @@ class SpeechService extends EventEmitter {
       }
     }
 
+    const bundledCandidate = this._getBundledWhisperCandidate();
+    if (bundledCandidate && fs.existsSync(bundledCandidate.command)) {
+      return bundledCandidate.command;
+    }
+
     const userDataCandidate = this._getUserDataWhisperCandidate();
     if (userDataCandidate && fs.existsSync(userDataCandidate.command)) {
       return userDataCandidate.command;
@@ -1413,6 +1458,29 @@ class SpeechService extends EventEmitter {
    * Electron's userData directory. This is where the onboarding installer
    * creates the venv in packaged builds.
    */
+  /**
+   * The self-contained Whisper runtime bundled into the .app via
+   * electron-builder's `extraResources` (scripts/build-whisper-runtime.sh) —
+   * a real Python interpreter with torch/openai-whisper already installed
+   * at build time. Only present in a packaged build; dev mode keeps using
+   * the project-relative .venv-whisper via _getUserDataWhisperCandidate().
+   * This is what makes Whisper work with zero end-user setup.
+   */
+  _getBundledWhisperCandidate() {
+    try {
+      const { app } = require('electron');
+      if (!app.isPackaged) return null;
+      const ext = process.platform === 'win32' ? '.exe' : '';
+      const python = path.join(process.resourcesPath, 'whisper-runtime', 'bin', `python3${ext}`);
+      if (fs.existsSync(python)) {
+        return { command: python, baseArgs: ['-m', 'whisper'] };
+      }
+    } catch (_) {
+      // electron may not be available in unit tests
+    }
+    return null;
+  }
+
   _getUserDataWhisperCandidate() {
     try {
       const { app } = require('electron');
@@ -1437,7 +1505,14 @@ class SpeechService extends EventEmitter {
       candidates.push(...this._expandConfiguredWhisperCandidates(configured));
     }
 
-    // Persistent app venv (highest priority after explicit config)
+    // Bundled self-contained runtime (packaged builds — highest priority
+    // after explicit config, since it needs no install step at all)
+    const bundledRuntime = this._getBundledWhisperCandidate();
+    if (bundledRuntime) {
+      candidates.push({ ...bundledRuntime, source: 'bundled runtime' });
+    }
+
+    // Persistent app venv (dev/legacy fallback)
     const userDataVenv = this._getUserDataWhisperCandidate();
     if (userDataVenv) {
       candidates.push({ ...userDataVenv, source: 'app userData venv' });
@@ -1861,19 +1936,19 @@ class SpeechService extends EventEmitter {
     if (!normalized) {
       return true;
     }
+    // Deliberately excludes short filler words like "okay", "so", "you", "ok",
+    // "bye" — those are plausible things a real user actually says as a short
+    // reply, and dropping them on an exact-match basis was silently eating
+    // real speech (a VAD-split sentence fragment that happened to be one of
+    // those words vanished before ever reaching the LLM). Only keep phrases
+    // that are unambiguous video-caption training artifacts nobody says
+    // mid-interview.
     const HALLUCINATIONS = new Set([
-      'thank you',
       'thank you for watching',
       'thanks for watching',
       'thank you so much for watching',
       'please subscribe',
       'like and subscribe',
-      'you',
-      'bye',
-      'bye bye',
-      'okay',
-      'ok',
-      'so',
       'the end',
       'subtitles by the amara org community'
     ]);

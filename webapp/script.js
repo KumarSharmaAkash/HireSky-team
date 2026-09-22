@@ -2,7 +2,6 @@
 (function () {
   'use strict';
 
-  var REPO = 'Akash/HireSky';
   var el = function (id) { return document.getElementById(id); };
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -92,33 +91,6 @@
     codeEl.textContent = 'int findDuplicate(vector<int>& nums) { ... }';
   }
 
-  /* ---------- GitHub stars ---------- */
-  var starEl = el('star-count');
-  fetch('https://api.github.com/repos/' + REPO, { headers: { Accept: 'application/vnd.github+json' } })
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) {
-      if (d && typeof d.stargazers_count === 'number') {
-        var label = d.stargazers_count >= 1000
-          ? (d.stargazers_count / 1000).toFixed(1) + 'k'
-          : String(d.stargazers_count);
-        if (starEl) { starEl.textContent = label; }
-      }
-    })
-    .catch(function () {});
-
-  /* ---------- GitHub total downloads (live, mirrors README badge) ---------- */
-  var dlEl = el('dl-count-nav');
-  var dlElMobile = el('dl-count-mobile');
-  fetch('https://img.shields.io/github/downloads/Akash/HireSky/total.json')
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (d) {
-      if (d && typeof d.value === 'string' && d.value.length) {
-        if (dlEl) { dlEl.textContent = d.value + ' downloads'; }
-        if (dlElMobile) { dlElMobile.textContent = d.value; }
-      }
-    })
-    .catch(function () {});
-
   /* ---------- OS detection ---------- */
   function detectOS() {
     var ua = (navigator.userAgent || '').toLowerCase();
@@ -129,15 +101,13 @@
     return null;
   }
 
-  /* ---------- Platforms (pre-built: Windows + Linux only) ---------- */
-  var PLATFORMS = [
-    { id: 'windows', label: 'Windows', icon: 'i-windows', note: 'NSIS installer. Adds a Start Menu shortcut.',
-      match: function (n) { return n.endsWith('.exe') && n.indexOf('blockmap') === -1; } },
-    { id: 'linux-deb', label: 'Linux, Debian or Ubuntu', icon: 'i-linux', note: 'Pulls system deps automatically.',
-      match: function (n) { return n.endsWith('.deb'); } },
-    { id: 'linux-appimage', label: 'Linux, universal', icon: 'i-linux', note: 'No install. Mark executable and run.',
-      match: function (n) { return n.endsWith('.appimage'); } }
-  ];
+  /* ---------- Downloads (macOS pre-built today; Windows/Linux coming soon) ---------- */
+  var MACOS_DOWNLOAD = {
+    url: './downloads/HireSky-1.0.0-arm64.dmg',
+    fileName: 'HireSky-1.0.0-arm64.dmg',
+    version: '1.0.0',
+    size: 761325862
+  };
 
   function fmtBytes(b) {
     if (!b) return '';
@@ -150,104 +120,60 @@
   }
   function icon(id) { return '<svg class="ic"><use href="#' + id + '"/></svg>'; }
 
-  function assetRow(a) {
-    return '<a class="asset" href="' + a.browser_download_url + '" target="_blank" rel="noopener" download>' +
-      icon('i-download') +
-      '<span class="meta"><span class="fname">' + a.name + '</span>' +
-      '<span class="fsize">' + fmtBytes(a.size) + '</span></span>' +
-      '<span class="go">' + '<svg class="ic"><use href="#i-arrow"/></svg>' + '</span>' +
-      '</a>';
+  function comingSoonCard(label, iconId) {
+    return '<div class="platform platform-soon">' +
+      '<div class="platform-head">' + icon(iconId) + '<h4>' + label + '</h4></div>' +
+      '<p class="pnote">Coming soon.</p>' +
+      '<div class="dl-links"><span class="asset empty">Not available yet</span></div>' +
+      '</div>';
   }
 
-  function renderRelease(rel) {
-    var assets = (rel.assets || []).filter(function (a) {
-      var n = a.name.toLowerCase();
-      return !n.endsWith('.blockmap') && !n.endsWith('.yml') && n !== 'sha256sums.txt';
-    });
-
-    // Version banner
+  function renderDownloads() {
     el('dl-version').innerHTML =
-      '<span class="tag"><span class="dot"></span>' + rel.tag_name +
-      '<span class="when">released ' + fmtDate(rel.published_at) + '</span></span>';
+      '<span class="tag"><span class="dot"></span>v' + MACOS_DOWNLOAD.version + '</span>';
 
-    // Per-platform matched assets
-    var byPlatform = PLATFORMS.map(function (p) {
-      var matched = assets.filter(function (a) { return p.match(a.name.toLowerCase()); });
-      return { p: p, assets: matched };
-    });
-
-    // Grid
     var macCard =
       '<div class="platform">' +
         '<div class="platform-head">' + icon('i-apple') + '<h4>macOS</h4></div>' +
-        '<p class="pnote">No pre-built download &mdash; the unsigned app is blocked by Gatekeeper. Build from source instead.</p>' +
+        '<p class="pnote">Apple Silicon (M1/M2/M3/M4). Unsigned build for now &mdash; right-click the app and choose "Open" the first time.</p>' +
         '<div class="dl-links">' +
-          '<a class="asset" href="https://github.com/' + REPO + '#quick-start" target="_blank" rel="noopener">' +
+          '<a class="asset" href="' + MACOS_DOWNLOAD.url + '" download>' +
             icon('i-download') +
-            '<span class="meta"><span class="fname">git clone &amp; ./setup.sh</span>' +
-            '<span class="fsize">Runs from source</span></span>' +
+            '<span class="meta"><span class="fname">' + MACOS_DOWNLOAD.fileName + '</span>' +
+            '<span class="fsize">' + fmtBytes(MACOS_DOWNLOAD.size) + '</span></span>' +
             '<span class="go"><svg class="ic"><use href="#i-arrow"/></svg></span>' +
           '</a>' +
         '</div>' +
       '</div>';
-    el('dl-grid').innerHTML = byPlatform.map(function (g) {
-      var links = g.assets.length
-        ? g.assets.map(assetRow).join('')
-        : '<span class="asset empty">Not in this release</span>';
-      return '<div class="platform">' +
-        '<div class="platform-head">' + icon(g.p.icon) + '<h4>' + g.p.label + '</h4></div>' +
-        '<p class="pnote">' + g.p.note + '</p>' +
-        '<div class="dl-links">' + links + '</div>' +
-        '</div>';
-    }).join('') + macCard;
 
-    // Recommended card for the visitor's OS
+    el('dl-grid').innerHTML = macCard +
+      comingSoonCard('Windows', 'i-windows') +
+      comingSoonCard('Linux', 'i-linux');
+
     var os = detectOS();
+    var heroLbl = el('hero-dl-label');
     if (os === 'macos') {
       el('dl-recommend').innerHTML =
         '<div class="rec-left">' +
           '<span class="rec-ic">' + icon('i-apple') + '</span>' +
           '<span class="rec-text">' +
             '<span class="rec-label">You are on macOS</span>' +
-            '<span class="rec-title">Build from source</span>' +
-            '<span class="rec-file">No signed build yet &middot; one-line ./setup.sh</span>' +
+            '<span class="rec-title">' + MACOS_DOWNLOAD.fileName + '</span>' +
+            '<span class="rec-file">' + fmtBytes(MACOS_DOWNLOAD.size) + '</span>' +
           '</span>' +
         '</div>' +
-        '<a class="btn btn-solid" href="https://github.com/' + REPO + '#quick-start" target="_blank" rel="noopener">' +
-          icon('i-download') + 'How to run</a>';
+        '<a class="btn btn-solid" href="' + MACOS_DOWNLOAD.url + '" download>' +
+          icon('i-download') + 'Download</a>';
       el('dl-recommend').classList.remove('hidden');
-      var heroLblMac = el('hero-dl-label');
-      if (heroLblMac) { heroLblMac.textContent = 'Build from source for macOS'; }
+      if (heroLbl) { heroLbl.textContent = 'Download for macOS'; }
     } else {
-      var rec = null;
-      for (var k = 0; k < byPlatform.length; k++) {
-        if (byPlatform[k].p.id === os && byPlatform[k].assets.length) { rec = byPlatform[k]; break; }
-      }
-      if (rec) {
-        var a = rec.assets[0];
-        el('dl-recommend').innerHTML =
-          '<div class="rec-left">' +
-            '<span class="rec-ic">' + icon(rec.p.icon) + '</span>' +
-            '<span class="rec-text">' +
-              '<span class="rec-label">Recommended for you</span>' +
-              '<span class="rec-title">' + rec.p.label + '</span>' +
-              '<span class="rec-file">' + a.name + ' &middot; ' + fmtBytes(a.size) + '</span>' +
-            '</span>' +
-          '</div>' +
-          '<a class="btn btn-solid" href="' + a.browser_download_url + '" target="_blank" rel="noopener" download>' +
-            icon('i-download') + 'Download</a>';
-        el('dl-recommend').classList.remove('hidden');
-        var heroLbl = el('hero-dl-label');
-        if (heroLbl) { heroLbl.textContent = 'Download for ' + (os.indexOf('win') === 0 ? 'Windows' : 'Linux'); }
-      }
+      if (heroLbl) { heroLbl.textContent = 'Download for macOS'; }
     }
 
     el('dl-loading').classList.add('hidden');
     el('dl-version').classList.remove('hidden');
     el('dl-grid').classList.remove('hidden');
-    el('dl-foot').classList.remove('hidden');
 
-    // Animate freshly added cards
     if ('IntersectionObserver' in window && !reduceMotion) {
       el('dl-grid').querySelectorAll('.platform').forEach(function (p) {
         p.classList.add('reveal');
@@ -259,13 +185,5 @@
     }
   }
 
-  function showDownloadError() {
-    el('dl-loading').classList.add('hidden');
-    el('dl-error').classList.remove('hidden');
-  }
-
-  fetch('https://api.github.com/repos/' + REPO + '/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
-    .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
-    .then(renderRelease)
-    .catch(showDownloadError);
+  renderDownloads();
 })();

@@ -21,6 +21,10 @@ class FirstRunManager {
     this.envPath = options.envPath || path.join(this.cwd, '.env');
     this.sentinelPath = options.sentinelPath || path.join(this.cwd, '.hiresky-firstrun-completed');
     this.logger = options.logger || console;
+    // Packaged builds ship a default.env (see build/default.env) with a
+    // working Gemini key baked in via electron-builder's extraResources, so
+    // a normal user never sees an API-key field — see _readTemplate().
+    this.resourcesPath = options.resourcesPath || null;
   }
 
   /**
@@ -126,12 +130,18 @@ class FirstRunManager {
   }
 
   _readTemplate() {
-    // Prefer env.example if it ships in the project; otherwise write a
-    // minimal template that the user can extend.
-    const candidates = [
+    // Packaged builds: prefer the bundled default.env (real, working Gemini
+    // key + bundled-Whisper-ready settings) so a fresh install needs zero
+    // configuration. Dev builds fall through to env.example, which has a
+    // placeholder key since the repo itself must never contain a real one.
+    const candidates = [];
+    if (this.resourcesPath) {
+      candidates.push(path.join(this.resourcesPath, 'default.env'));
+    }
+    candidates.push(
       path.join(this.cwd, 'env.example'),
       path.join(__dirname, '..', '..', 'env.example'),
-    ];
+    );
     for (const candidate of candidates) {
       try {
         return fs.readFileSync(candidate, 'utf8');

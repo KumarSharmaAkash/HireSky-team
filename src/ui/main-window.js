@@ -16,6 +16,7 @@ class MainWindowUI {
         this.micButton = null;
         this.isRecording = false;
         this.speechAvailable = false; // track availability
+        this.permissionStatus = { microphone: 'granted', screen: 'granted' };
         this._popoverHideTimeout = null;
         // Renderer-side audio capture state (used for Whisper on Windows)
         this._audioContext = null;
@@ -44,7 +45,17 @@ class MainWindowUI {
             
             // Fetch speech availability
             await this.loadSpeechAvailability();
-            
+
+            // Fetch mic/screen-recording permission status so the buttons
+            // can degrade gracefully instead of silently failing.
+            await this.loadPermissionStatus();
+            if (window.electronAPI && window.electronAPI.onPermissionStatusChanged) {
+                window.electronAPI.onPermissionStatusChanged((status) => {
+                    this.permissionStatus = status;
+                    this.updatePermissionButtonStates();
+                });
+            }
+
             this.updateSkillIndicator();
             this.updateAllElementStates(); // Update all elements with current state
             this.resizeWindowToContent();
@@ -86,6 +97,35 @@ class MainWindowUI {
                 component: 'MainWindowUI',
                 error: error.message
             });
+        }
+    }
+
+    async loadPermissionStatus() {
+        try {
+            if (window.electronAPI && window.electronAPI.getPermissionStatus) {
+                this.permissionStatus = await window.electronAPI.getPermissionStatus();
+                this.updatePermissionButtonStates();
+            }
+        } catch (error) {
+            logger.warn('Failed to load permission status', {
+                component: 'MainWindowUI',
+                error: error.message
+            });
+        }
+    }
+
+    updatePermissionButtonStates() {
+        if (this.micButton) {
+            const denied = this.permissionStatus.microphone === 'denied' || this.permissionStatus.microphone === 'restricted';
+            this.micButton.title = denied
+                ? 'Microphone permission is required for voice input. Click to open System Settings.'
+                : '';
+        }
+        if (this.screenshotButton) {
+            const denied = this.permissionStatus.screen === 'denied' || this.permissionStatus.screen === 'restricted';
+            this.screenshotButton.title = denied
+                ? 'Screen Recording permission is required for screen analysis. Click to open System Settings.'
+                : '';
         }
     }
 
@@ -283,7 +323,15 @@ class MainWindowUI {
 
         // Screenshot click handler
         this.screenshotButton.addEventListener('click', () => {
-            if (this.isInteractive && window.electronAPI && window.electronAPI.takeScreenshot) {
+            if (!this.isInteractive || !window.electronAPI) return;
+            const denied = this.permissionStatus.screen === 'denied' || this.permissionStatus.screen === 'restricted';
+            if (denied) {
+                if (window.electronAPI.openScreenRecordingSettings) {
+                    window.electronAPI.openScreenRecordingSettings();
+                }
+                return;
+            }
+            if (window.electronAPI.takeScreenshot) {
                 window.electronAPI.takeScreenshot();
             }
         });
@@ -312,6 +360,17 @@ class MainWindowUI {
 
         // Add click handler for microphone
         this.micButton.addEventListener('click', async () => {
+            const deniedAlready = this.permissionStatus.microphone === 'denied' || this.permissionStatus.microphone === 'restricted';
+            if (this.isInteractive && deniedAlready && window.electronAPI && window.electronAPI.openMicrophoneSettings) {
+                window.electronAPI.openMicrophoneSettings();
+                return;
+            }
+            if (this.isInteractive && this.permissionStatus.microphone === 'not-determined' && window.electronAPI && window.electronAPI.requestMicrophonePermission) {
+                const result = await window.electronAPI.requestMicrophonePermission();
+                if (result && result.status) this.permissionStatus = result.status;
+                this.updatePermissionButtonStates();
+                if (!result || !result.granted) return;
+            }
             if (this.isInteractive && this.speechAvailable) {
                 try {
                     if (this.isRecording) {

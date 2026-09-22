@@ -58,6 +58,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('install-progress', wrapped);
   },
   updateAppIcon: (iconKey) => ipcRenderer.invoke('update-app-icon', iconKey),
+  setStealthMode: (enabled) => ipcRenderer.invoke('set-stealth-mode', enabled),
+  login: (email, password) => ipcRenderer.invoke('auth-login', email, password),
+  logout: () => ipcRenderer.invoke('auth-logout'),
+  getAuthStatus: () => ipcRenderer.invoke('auth-get-status'),
+  getPermissionStatus: () => ipcRenderer.invoke('get-permission-status'),
+  requestMicrophonePermission: () => ipcRenderer.invoke('request-microphone-permission'),
+  openMicrophoneSettings: () => ipcRenderer.invoke('open-microphone-settings'),
+  openScreenRecordingSettings: () => ipcRenderer.invoke('open-screen-recording-settings'),
+  onPermissionStatusChanged: (callback) => {
+    const wrapped = (_event, status) => callback(status);
+    ipcRenderer.on('permission-status-changed', wrapped);
+    return () => ipcRenderer.removeListener('permission-status-changed', wrapped);
+  },
   updateActiveSkill: (skill) => ipcRenderer.invoke('update-active-skill', skill),
   restartAppForStealth: () => ipcRenderer.invoke('restart-app-for-stealth'),
   closeWindow: () => ipcRenderer.invoke('close-window'),

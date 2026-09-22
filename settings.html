@@ -280,6 +280,10 @@
                 Settings
             </div>
             <div class="header-actions">
+                <button class="btn" id="logoutButton">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Log out
+                </button>
                 <button class="btn btn-quit" id="quitButton">
                     <i class="fas fa-power-off"></i>
                     Quit
@@ -324,6 +328,22 @@
             </div>
 
             <div class="settings-section">
+                <div class="settings-section-title">
+                    <i class="fas fa-user-secret"></i>
+                    Stealth Mode
+                </div>
+                <div class="settings-section-content">
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Disguise HireSky while active</div>
+                            <div class="settings-item-description">Off by default so HireSky behaves like a normal app. Turn on right before a call to disguise the Dock icon, menu bar name, and process name.</div>
+                        </div>
+                        <input type="checkbox" id="stealthEnabled" style="width: 20px; height: 20px;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section" id="appIconSection">
                 <div class="settings-section-title">
                     <i class="fas fa-icons"></i>
                     App Icon
@@ -383,21 +403,44 @@
 
                     <!-- Whisper fields (shown only when Whisper is selected) -->
                     <div id="whisperFields" class="settings-group">
-                        <div class="settings-item">
-                            <div class="settings-stack">
-                                <div>
-                                    <div class="settings-item-label">Whisper Command</div>
-                                    <div class="settings-item-description">CLI command for local Whisper, such as <code>whisper</code> or <code>python3 -m whisper</code></div>
+                        <!-- Implementation-detail fields — only relevant when Whisper
+                             isn't bundled with the app (dev builds). Hidden entirely
+                             in packaged builds since there's nothing to configure. -->
+                        <div id="whisperTechnicalFields">
+                            <div class="settings-item">
+                                <div class="settings-stack">
+                                    <div>
+                                        <div class="settings-item-label">Whisper Command</div>
+                                        <div class="settings-item-description">CLI command for local Whisper, such as <code>whisper</code> or <code>python3 -m whisper</code></div>
+                                    </div>
+                                    <input type="text" class="input-field" id="whisperCommand" placeholder="whisper" style="max-width: 100%;">
                                 </div>
-                                <input type="text" class="input-field" id="whisperCommand" placeholder="whisper" style="max-width: 100%;">
                             </div>
-                        </div>
-                        <div class="settings-item">
-                            <div>
-                                <div class="settings-item-label">Whisper Model</div>
-                                <div class="settings-item-description">Local model name used by the Whisper CLI</div>
+                            <div class="settings-item">
+                                <div>
+                                    <div class="settings-item-label">Whisper Model</div>
+                                    <div class="settings-item-description">Local model name used by the Whisper CLI</div>
+                                </div>
+                                <input type="text" class="input-field" id="whisperModel" placeholder="small">
                             </div>
-                            <input type="text" class="input-field" id="whisperModel" placeholder="small">
+                            <div class="settings-item">
+                                <div>
+                                    <div class="settings-item-label">Compute Device</div>
+                                    <div class="settings-item-description">Automatically use CUDA when available, or force CPU/GPU</div>
+                                </div>
+                                <select class="input-field" id="whisperDevice">
+                                    <option value="auto">Auto</option>
+                                    <option value="cpu">CPU</option>
+                                    <option value="cuda">CUDA</option>
+                                </select>
+                            </div>
+                            <div class="settings-item">
+                                <div>
+                                    <div class="settings-item-label">Whisper Segment Length</div>
+                                    <div class="settings-item-description">Chunk size in milliseconds for local transcription</div>
+                                </div>
+                                <input type="number" class="input-field" id="whisperSegmentMs" placeholder="4000" min="2000" step="500">
+                            </div>
                         </div>
                         <div class="settings-item">
                             <div>
@@ -405,17 +448,6 @@
                                 <div class="settings-item-description">Language code or auto-detection for local transcription</div>
                             </div>
                             <input type="text" class="input-field" id="whisperLanguage" placeholder="auto">
-                        </div>
-                        <div class="settings-item">
-                            <div>
-                                <div class="settings-item-label">Compute Device</div>
-                                <div class="settings-item-description">Automatically use CUDA when available, or force CPU/GPU</div>
-                            </div>
-                            <select class="input-field" id="whisperDevice">
-                                <option value="auto">Auto</option>
-                                <option value="cpu">CPU</option>
-                                <option value="cuda">CUDA</option>
-                            </select>
                         </div>
                         <div class="settings-item">
                             <div>
@@ -456,7 +488,7 @@
                 </div>
             </div>
             
-            <div class="settings-section">
+            <div class="settings-section" id="geminiSection">
                 <div class="settings-section-title">
                     <i class="fas fa-robot"></i>
                     Gemini Settings

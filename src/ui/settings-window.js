@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Get DOM elements
     const closeButton = document.getElementById('closeButton');
     const quitButton = document.getElementById('quitButton');
+    const logoutButton = document.getElementById('logoutButton');
     const speechProviderSelect = document.getElementById('speechProvider');
     const azureKeyInput = document.getElementById('azureKey');
     const azureRegionInput = document.getElementById('azureRegion');
@@ -21,6 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const codingLanguageSelect = document.getElementById('codingLanguage');
     const activeSkillSelect = document.getElementById('activeSkill');
     const iconGrid = document.getElementById('iconGrid');
+    const stealthEnabledCheckbox = document.getElementById('stealthEnabled');
+    const appIconSection = document.getElementById('appIconSection');
 
     // Check if window.api exists
     if (!window.api) {
@@ -43,6 +46,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (closeButton) {
         closeButton.addEventListener('click', () => {
             window.api.send('close-settings');
+        });
+    }
+
+    // Logout button handler
+    if (logoutButton) {
+        logoutButton.addEventListener('click', () => {
+            if (window.electronAPI && window.electronAPI.logout) {
+                window.electronAPI.logout();
+            }
         });
     }
 
@@ -96,6 +108,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (settings.activeSkill && activeSkillSelect) activeSkillSelect.value = settings.activeSkill;
+
+        // Packaged builds bundle Whisper + a working Gemini key (see
+        // build/default.env) — hide the technical/key fields a normal end
+        // user never needs. Dev builds (npm run dev) keep them visible.
+        const geminiSection = document.getElementById('geminiSection');
+        const whisperTechnicalFields = document.getElementById('whisperTechnicalFields');
+        if (settings.isPackaged) {
+            if (geminiSection) geminiSection.style.display = 'none';
+            if (whisperTechnicalFields) whisperTechnicalFields.style.display = 'none';
+        }
+
+        if (stealthEnabledCheckbox) {
+            stealthEnabledCheckbox.checked = !!settings.stealthEnabled;
+            updateAppIconSectionVisibility();
+        }
 
         // Handle icon selection
         const selectedIcon = settings.selectedIcon || settings.appIcon;
@@ -153,6 +180,19 @@ document.addEventListener('DOMContentLoaded', () => {
         
         window.api.send('save-settings', settings);
     };
+
+    const updateAppIconSectionVisibility = () => {
+        if (appIconSection) {
+            appIconSection.style.display = (stealthEnabledCheckbox && stealthEnabledCheckbox.checked) ? '' : 'none';
+        }
+    };
+
+    if (stealthEnabledCheckbox) {
+        stealthEnabledCheckbox.addEventListener('change', () => {
+            updateAppIconSectionVisibility();
+            window.api.send('save-settings', { stealthEnabled: stealthEnabledCheckbox.checked });
+        });
+    }
 
     const updateSpeechFieldStates = () => {
         const provider = speechProviderSelect ? speechProviderSelect.value : 'azure';

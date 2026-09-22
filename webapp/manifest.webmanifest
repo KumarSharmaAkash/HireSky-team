@@ -1,7 +1,7 @@
 {
   "name": "HireSky — Invisible AI Interview Copilot",
   "short_name": "HireSky",
-  "description": "The free, open-source AI interview copilot that stays invisible to Zoom, Meet, Teams, Discord, and OBS screen sharing.",
+  "description": "The invisible AI interview copilot that stays hidden from Zoom, Meet, Teams, Discord, and OBS screen sharing.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

@@ -1,5 +1,6 @@
 node_modules/
 .env
+build/default.env
 .venv-whisper/
 .whisper-models/
 eng.traineddata
@@ -7,3 +8,5 @@ dist/
 bin/
 .DS_Store
 *.log
+vendor/
+webapp/downloads/
